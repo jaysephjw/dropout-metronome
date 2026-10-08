@@ -1,0 +1,561 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dropout Metronome</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800&family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:ital,wght@0,400;0,600;1,400&display=swap">
+<style>
+/* Layout: rehearsal-device split — live readout on the left, settings rack on the right; stacks on phones */
+:root{
+  --bg:#E7ECF1; --surface:#F8FAFC; --ink:#131C28; --muted:#566475; --line:#C9D2DC;
+  --accent:#2445C4; --drop:#B86E08; --drop-soft:#FBEBD2; --on-accent:#FFFFFF; --shadow:rgba(19,28,40,.12);
+  --display:"Big Shoulders Display","Arial Narrow",Impact,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0D131B; --surface:#151D28; --ink:#E4EAF1; --muted:#8B99AA; --line:#2A3646;
+    --accent:#7D93FF; --drop:#F2A33A; --drop-soft:#2E2312; --on-accent:#0D131B; --shadow:rgba(0,0,0,.4);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0D131B; --surface:#151D28; --ink:#E4EAF1; --muted:#8B99AA; --line:#2A3646;
+  --accent:#7D93FF; --drop:#F2A33A; --drop-soft:#2E2312; --on-accent:#0D131B; --shadow:rgba(0,0,0,.4);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5}
+.app{max-width:1060px;margin:0 auto;padding-inline:20px;padding-block:20px 40px;display:grid;gap:20px}
+@media (max-width:480px){.app{padding-inline:16px}}
+
+.top{display:flex;align-items:baseline;justify-content:space-between;gap:8px 20px;flex-wrap:wrap}
+.mark{font-family:var(--display);font-weight:800;font-size:34px;line-height:1;letter-spacing:.01em;text-transform:uppercase;display:flex;align-items:baseline;gap:10px}
+.mark span{font-family:var(--mono);font-weight:500;font-size:12px;letter-spacing:.14em;color:var(--muted)}
+.tag{margin:0;color:var(--muted);max-width:46ch}
+
+.grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:840px){.grid{grid-template-columns:minmax(0,1fr)}}
+
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:22px;display:grid;gap:18px;min-width:0}
+
+/* Readout */
+.readout{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:16px}
+.countwrap{display:grid;gap:10px;min-width:0}
+.count{font-family:var(--display);font-weight:800;font-size:clamp(104px,24vw,172px);line-height:.78;color:var(--accent);min-width:1.1ch;font-variant-numeric:tabular-nums;transform-origin:left bottom}
+.count.idle{color:var(--line)}
+.count.dropped{color:transparent;-webkit-text-stroke:3px var(--drop)}
+.count.hit{animation:hit .16s ease-out}
+@keyframes hit{from{transform:scale(1.07)}to{transform:none}}
+.status{font-family:var(--mono);font-size:12px;line-height:18px;height:18px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.status::before{content:"";display:inline-block;width:8px;height:8px;margin-right:8px;vertical-align:0;border-radius:50%;background:var(--line)}
+.status.live::before{background:var(--accent)}
+.status.gap{color:var(--drop)}
+.status.gap::before{background:var(--drop)}
+.tempoblock{text-align:right;margin-left:auto}
+.bpm{font-family:var(--display);font-weight:800;font-size:68px;line-height:.85;font-variant-numeric:tabular-nums}
+.bpm small{font-family:var(--mono);font-weight:500;font-size:12px;letter-spacing:.12em;color:var(--muted);margin-left:6px}
+.marking{font-style:italic;color:var(--muted);font-size:17px}
+
+/* Beat pips */
+.pips{display:grid;grid-template-columns:repeat(var(--n,4),minmax(0,1fr));gap:6px}
+.pip{font:inherit;height:52px;border-radius:9px;border:1.5px solid var(--line);background:transparent;color:var(--muted);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;padding:0;line-height:1.1;transition:background .06s}
+.pip .mk{font-family:var(--mono);font-size:13px;height:15px;color:var(--ink)}
+.pip .num{font-family:var(--mono);font-size:12px}
+.pip.acc-2{border-color:var(--ink);border-width:2.5px}
+.pip.acc-0{background:repeating-linear-gradient(135deg,transparent 0 6px,var(--line) 6px 7px)}
+.pip.acc-0 .mk{color:var(--muted)}
+.pip.now{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.pip.now .mk{color:var(--on-accent)}
+.pip.now.dropped{background:var(--drop-soft);border:2px dashed var(--drop);color:var(--drop)}
+.pip.now.dropped .mk{color:var(--drop)}
+.hint{margin:-8px 0 0;font-size:13px;color:var(--muted)}
+
+/* Tempo + transport */
+.tempo{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center}
+.transport{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:10px}
+.btn{font:inherit;font-weight:600;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:10px;padding:8px 14px;min-height:46px;cursor:pointer}
+.btn:hover{border-color:var(--muted)}
+.btn.sq{width:46px;padding:0;font-size:22px;line-height:1}
+.play{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-family:var(--display);font-weight:800;font-size:26px;letter-spacing:.05em;text-transform:uppercase;min-height:58px}
+.play:hover{border-color:var(--accent);filter:brightness(1.08)}
+.play.on{background:var(--ink);border-color:var(--ink);color:var(--surface)}
+.tapbtn.flash{background:var(--bg)}
+input[type=range]{width:100%;accent-color:var(--accent);height:30px;margin:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* Tape */
+.tapehead{display:flex;justify-content:space-between;gap:8px 16px;flex-wrap:wrap;font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.legend{display:flex;gap:12px;align-items:center}
+.legend i{display:inline-block;width:8px;height:12px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.legend .lp{background:var(--ink)}
+.legend .ld{border:1.5px solid var(--drop)}
+.tape{display:grid;grid-template-columns:repeat(32,minmax(0,1fr));gap:3px;height:30px;align-items:end}
+.cell{height:14px;border-radius:2px;background:var(--line);opacity:.55}
+.cell.one{height:28px}
+.cell.p{background:var(--ink);opacity:.85}
+.cell.d{background:var(--drop-soft);border:1.5px solid var(--drop);opacity:1}
+
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0;border-top:1px solid var(--line);padding-top:16px}
+.stats div{min-width:0}
+.stats dt{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.stats dd{margin:0;font-family:var(--display);font-weight:800;font-size:30px;line-height:1.1;font-variant-numeric:tabular-nums}
+.stats .dd-drop{color:var(--drop)}
+@media (max-width:420px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Panels */
+.rack{display:grid;gap:20px;min-width:0}
+.panel h2{margin:0;font-family:var(--display);font-weight:800;font-size:24px;line-height:1;text-transform:uppercase;letter-spacing:.02em}
+.panelhead{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.drop{background:var(--drop-soft);border-color:var(--drop)}
+.drop input[type=range]{accent-color:var(--drop)}
+fieldset{border:0;margin:0;padding:0;display:grid;gap:16px;min-width:0}
+fieldset:disabled{opacity:.45}
+.field{display:grid;gap:8px}
+.flabel{font-size:13px;font-weight:600}
+.sub{font-size:13px;color:var(--muted);margin:0}
+.chance{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.pct{font-family:var(--display);font-weight:800;font-size:56px;line-height:.9;color:var(--drop);font-variant-numeric:tabular-nums}
+.pct small{font-size:28px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:14px}
+.row > div{min-width:0}
+
+.seg{position:relative;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:3px;padding:3px;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
+.seg input{position:absolute;opacity:0;pointer-events:none;width:1px;height:1px}
+.seg label{text-align:center;padding:7px 2px;border-radius:7px;cursor:pointer;font-size:13px;color:var(--muted);line-height:1.25;display:grid;gap:1px}
+.seg label b{font-weight:400;font-size:17px;color:var(--ink)}
+.seg input:checked + label{background:var(--surface);color:var(--ink);font-weight:600;box-shadow:0 1px 3px var(--shadow)}
+.seg input:focus-visible + label{outline:2px solid var(--accent);outline-offset:1px}
+
+.switch{appearance:none;-webkit-appearance:none;flex:none;width:46px;height:26px;border-radius:13px;background:var(--line);position:relative;cursor:pointer;margin:0;transition:background .15s}
+.switch::before{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:var(--surface);box-shadow:0 1px 2px var(--shadow);transition:transform .15s}
+.switch:checked{background:var(--accent)}
+.drop .switch:checked{background:var(--drop)}
+.switch:checked::before{transform:translateX(20px)}
+
+.stepper{display:flex;align-items:center;gap:10px}
+.meter{font-family:var(--display);font-weight:800;font-size:40px;line-height:1;min-width:2.6ch;text-align:center;font-variant-numeric:tabular-nums}
+.meter span{color:var(--muted)}
+
+.keys{color:var(--muted);font-size:13px;display:flex;gap:6px 18px;flex-wrap:wrap}
+kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 6px;background:var(--surface);color:var(--ink)}
+
+@media (prefers-reduced-motion: reduce){.count.hit{animation:none}.switch,.switch::before{transition:none}}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header class="top">
+    <div class="mark">Dropout<span>METRONOME</span></div>
+    <p class="tag">A metronome that goes silent at random, so you learn to hold the pulse yourself.</p>
+  </header>
+
+  <main class="grid">
+    <section class="card stage" aria-label="Metronome">
+      <div class="readout">
+        <div class="countwrap">
+          <div class="count idle" id="count" aria-live="off">1</div>
+          <div class="status" id="status">Stopped</div>
+        </div>
+        <div class="tempoblock">
+          <div class="bpm"><span id="bpmVal">96</span><small>BPM</small></div>
+          <div class="marking" id="marking">Andante</div>
+        </div>
+      </div>
+
+      <div class="pips" id="pips" role="group" aria-label="Beats in the bar"></div>
+      <p class="hint">Tap a beat to cycle: normal → accent (&gt;) → mute (×)</p>
+
+      <div class="tempo">
+        <button class="btn sq" id="minus" aria-label="Slower by 1 BPM">−</button>
+        <input type="range" id="bpm" min="30" max="260" step="1" aria-label="Tempo in BPM">
+        <button class="btn sq" id="plus" aria-label="Faster by 1 BPM">+</button>
+      </div>
+
+      <div class="transport">
+        <button class="btn play" id="play">Start</button>
+        <button class="btn tapbtn" id="tap">Tap tempo</button>
+      </div>
+
+      <div>
+        <div class="tapehead">
+          <span>Last 32 beats</span>
+          <span class="legend"><span><i class="lp"></i>Played</span><span><i class="ld"></i>Dropped</span></span>
+        </div>
+        <div class="tape" id="tape" aria-hidden="true"></div>
+      </div>
+
+      <dl class="stats">
+        <div><dt>Played</dt><dd id="stPlayed">0</dd></div>
+        <div><dt>Dropped</dt><dd class="dd-drop" id="stDropped">0</dd></div>
+        <div><dt>Actual rate</dt><dd id="stRate">–</dd></div>
+        <div><dt>Time</dt><dd id="stTime">0:00</dd></div>
+      </dl>
+    </section>
+
+    <div class="rack">
+      <section class="card panel drop" aria-labelledby="dropH">
+        <div class="panelhead">
+          <h2 id="dropH">Dropped beats</h2>
+          <input type="checkbox" class="switch" role="switch" id="dropOn" aria-label="Turn dropped beats on or off">
+        </div>
+        <fieldset id="dropFields">
+          <div class="field">
+            <div class="chance">
+              <label class="flabel" for="chance">Chance each beat goes silent</label>
+              <div class="pct"><span id="chanceVal">25</span><small>%</small></div>
+            </div>
+            <input type="range" id="chance" min="0" max="90" step="5">
+            <p class="sub" id="dropHint">About 1 in 4 beats go silent.</p>
+          </div>
+
+          <div class="field">
+            <span class="flabel">What drops</span>
+            <div class="seg" role="radiogroup" aria-label="What drops">
+              <input type="radio" name="unit" id="u-beat" value="beat"><label for="u-beat">Single beats</label>
+              <input type="radio" name="unit" id="u-bar" value="bar"><label for="u-bar">Whole bars</label>
+            </div>
+          </div>
+
+          <div class="field">
+            <span class="flabel">Clean bars before drops start</span>
+            <div class="seg" role="radiogroup" aria-label="Clean lead-in bars">
+              <input type="radio" name="lead" id="l0" value="0"><label for="l0">None</label>
+              <input type="radio" name="lead" id="l1" value="1"><label for="l1">1</label>
+              <input type="radio" name="lead" id="l2" value="2"><label for="l2">2</label>
+              <input type="radio" name="lead" id="l4" value="4"><label for="l4">4</label>
+            </div>
+          </div>
+
+          <div class="row">
+            <div><div class="flabel">Always play beat 1</div><p class="sub">Keeps the downbeat as an anchor.</p></div>
+            <input type="checkbox" class="switch" role="switch" id="keepOne" aria-label="Always play beat 1">
+          </div>
+          <div class="row">
+            <div><div class="flabel">Show drops on screen</div><p class="sub">Off: the display goes still too, so you rely on your ears.</p></div>
+            <input type="checkbox" class="switch" role="switch" id="showDrops" aria-label="Show dropped beats on screen">
+          </div>
+        </fieldset>
+      </section>
+
+      <section class="card panel" aria-labelledby="meterH">
+        <h2 id="meterH">Meter</h2>
+        <div class="row">
+          <span class="flabel">Beats per bar</span>
+          <div class="stepper">
+            <button class="btn sq" id="beatsMinus" aria-label="Fewer beats">−</button>
+            <div class="meter" aria-live="polite"><span id="beatsVal">4</span><span>/4</span></div>
+            <button class="btn sq" id="beatsPlus" aria-label="More beats">+</button>
+          </div>
+        </div>
+        <div class="field">
+          <span class="flabel">Subdivision</span>
+          <div class="seg" role="radiogroup" aria-label="Subdivision">
+            <input type="radio" name="subdiv" id="s1" value="1"><label for="s1"><b>♩</b>Quarter</label>
+            <input type="radio" name="subdiv" id="s2" value="2"><label for="s2"><b>♫</b>Eighths</label>
+            <input type="radio" name="subdiv" id="s3" value="3"><label for="s3"><b>3</b>Triplets</label>
+            <input type="radio" name="subdiv" id="s4" value="4"><label for="s4"><b>♬</b>16ths</label>
+          </div>
+        </div>
+      </section>
+
+      <section class="card panel" aria-labelledby="soundH">
+        <h2 id="soundH">Sound</h2>
+        <div class="seg" role="radiogroup" aria-label="Click sound">
+          <input type="radio" name="sound" id="snd-wood" value="wood"><label for="snd-wood">Woodblock</label>
+          <input type="radio" name="sound" id="snd-click" value="click"><label for="snd-click">Click</label>
+          <input type="radio" name="sound" id="snd-beep" value="beep"><label for="snd-beep">Beep</label>
+        </div>
+        <div class="field">
+          <label class="flabel" for="vol">Volume</label>
+          <input type="range" id="vol" min="0" max="100" step="1">
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="keys">
+    <span><kbd>Space</kbd> start / stop</span>
+    <span><kbd>←</kbd><kbd>→</kbd> ±1 BPM</span>
+    <span><kbd>↑</kbd><kbd>↓</kbd> ±5 BPM</span>
+    <span><kbd>T</kbd> tap tempo</span>
+  </footer>
+</div>
+
+<script>
+(function(){
+const KEY = 'dropout-metronome-v1';
+const DEF = {bpm:96, beats:4, subdiv:1, sound:'wood', vol:80, dropOn:true, chance:25, unit:'beat', leadIn:2, keepOne:false, showDrops:true, accents:[2,1,1,1]};
+const $ = id => document.getElementById(id);
+const clamp = (v,a,b) => Math.min(b, Math.max(a, v));
+
+let S = load();
+function load(){
+  try { const r = JSON.parse(localStorage.getItem(KEY)); if (r && typeof r === 'object') return Object.assign(JSON.parse(JSON.stringify(DEF)), r); } catch(e){}
+  return JSON.parse(JSON.stringify(DEF));
+}
+function save(){ try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){} }
+
+/* ---------- Audio ---------- */
+let ctx = null, master = null, timer = null, playing = false;
+let nextTime = 0, sub = 0, bar = 0, beatDropped = false, barDropped = false, startTime = 0;
+const queue = [];
+const TONES = {
+  wood:  {accent:1250, beat:900,  sub:680, type:'sine',     dur:.07,  gain:1,   bend:true},
+  click: {accent:2100, beat:1500, sub:1100,type:'square',   dur:.022, gain:.3},
+  beep:  {accent:1320, beat:880,  sub:660, type:'triangle', dur:.09,  gain:.8}
+};
+
+function makeMaster(){
+  master = ctx.createGain();
+  master.gain.value = Math.pow(S.vol/100, 1.6);
+  master.connect(ctx.destination);
+}
+function ensureCtx(){
+  if (!ctx){ ctx = new (window.AudioContext || window.webkitAudioContext)(); makeMaster(); }
+  return ctx.resume();
+}
+function playClick(t, level){
+  const s = TONES[S.sound] || TONES.wood;
+  const o = ctx.createOscillator(), g = ctx.createGain();
+  o.type = s.type;
+  const f = s[level];
+  o.frequency.setValueAtTime(f, t);
+  if (s.bend) o.frequency.exponentialRampToValueAtTime(f*0.55, t + s.dur);
+  const amp = (level==='accent' ? 1 : level==='beat' ? .62 : .32) * s.gain;
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(amp, t + 0.002);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + s.dur);
+  o.connect(g); g.connect(master);
+  o.start(t); o.stop(t + s.dur + 0.02);
+}
+
+function scheduleTick(){
+  const sd = S.subdiv, total = S.beats * sd;
+  if (sub >= total) sub = 0;
+  const beat = Math.floor(sub / sd), onBeat = sub % sd === 0;
+  const inLead = bar < S.leadIn;
+  if (sub === 0) barDropped = S.dropOn && S.unit === 'bar' && !inLead && Math.random()*100 < S.chance;
+  if (onBeat){
+    if (!S.dropOn || inLead) beatDropped = false;
+    else if (S.keepOne && beat === 0) beatDropped = false;
+    else if (S.unit === 'bar') beatDropped = barDropped;
+    else beatDropped = Math.random()*100 < S.chance;
+  }
+  const acc = S.accents[beat] ?? 1;
+  if (!beatDropped && acc !== 0) playClick(nextTime, onBeat ? (acc === 2 ? 'accent' : 'beat') : 'sub');
+  queue.push({t:nextTime, beat, onBeat, dropped:beatDropped, lead:inLead, bar});
+}
+function advance(){
+  nextTime += 60 / S.bpm / S.subdiv;
+  sub++;
+  if (sub >= S.beats * S.subdiv){ sub = 0; bar++; }
+}
+function scheduler(){
+  while (nextTime < ctx.currentTime + 0.12){ scheduleTick(); advance(); }
+}
+
+let wake = null;
+async function lockScreen(){ try { if (navigator.wakeLock) wake = await navigator.wakeLock.request('screen'); } catch(e){ wake = null; } }
+function unlockScreen(){ try { if (wake) wake.release(); } catch(e){} wake = null; }
+
+const stats = {played:0, dropped:0};
+let tapeData = [];
+
+async function start(){
+  await ensureCtx();
+  playing = true; sub = 0; bar = 0; beatDropped = false; barDropped = false;
+  stats.played = 0; stats.dropped = 0; tapeData = []; renderTape(); renderStats();
+  nextTime = ctx.currentTime + 0.08; startTime = nextTime;
+  scheduler();
+  timer = setInterval(scheduler, 25);
+  $('play').textContent = 'Stop'; $('play').classList.add('on');
+  lockScreen();
+}
+function stop(){
+  playing = false;
+  clearInterval(timer); timer = null;
+  queue.length = 0;
+  if (master){ try { master.disconnect(); } catch(e){} makeMaster(); }
+  $('play').textContent = 'Start'; $('play').classList.remove('on');
+  const c = $('count'); c.textContent = '1'; c.className = 'count idle';
+  setStatus('Stopped', '');
+  document.querySelectorAll('.pip').forEach(p => p.classList.remove('now','dropped'));
+  unlockScreen();
+}
+function toggle(){ playing ? stop() : start(); }
+
+/* ---------- Visual sync ---------- */
+function setStatus(text, cls){ const s = $('status'); s.textContent = text; s.className = 'status' + (cls ? ' ' + cls : ''); }
+function render(ev){
+  if (!ev.onBeat) return;
+  if (ev.dropped) stats.dropped++; else stats.played++;
+  tapeData.push({d:ev.dropped, one:ev.beat === 0});
+  if (tapeData.length > 32) tapeData.shift();
+  renderTape(); renderStats();
+  if (ev.dropped && !S.showDrops) return;
+  const c = $('count');
+  c.textContent = ev.beat + 1;
+  c.className = 'count' + (ev.dropped ? ' dropped' : '');
+  void c.offsetWidth; c.classList.add('hit');
+  const pips = document.querySelectorAll('.pip');
+  pips.forEach(p => p.classList.remove('now','dropped'));
+  if (pips[ev.beat]){ pips[ev.beat].classList.add('now'); if (ev.dropped) pips[ev.beat].classList.add('dropped'); }
+  if (ev.lead) setStatus('Lead-in · bar ' + (ev.bar + 1) + ' of ' + S.leadIn, 'live');
+  else if (ev.dropped) setStatus('Silent · keep counting', 'gap');
+  else setStatus(S.dropOn && S.chance > 0 ? 'Drops active' : 'Playing', 'live');
+}
+function frame(){
+  if (ctx && playing){
+    const now = ctx.currentTime;
+    while (queue.length && queue[0].t <= now) render(queue.shift());
+    const secs = Math.max(0, Math.floor(now - startTime));
+    $('stTime').textContent = Math.floor(secs/60) + ':' + String(secs % 60).padStart(2,'0');
+  }
+  requestAnimationFrame(frame);
+}
+
+/* ---------- UI ---------- */
+const MARKINGS = [[40,'Grave'],[60,'Largo'],[66,'Larghetto'],[76,'Adagio'],[108,'Andante'],[120,'Moderato'],[156,'Allegro'],[176,'Vivace'],[200,'Presto'],[Infinity,'Prestissimo']];
+function setBpm(v){
+  S.bpm = clamp(Math.round(v), 30, 260);
+  $('bpmVal').textContent = S.bpm;
+  $('bpm').value = S.bpm;
+  $('marking').textContent = MARKINGS.find(m => S.bpm < m[0])[1];
+  save();
+}
+
+function buildTape(){
+  const t = $('tape'); t.innerHTML = '';
+  for (let i = 0; i < 32; i++){ const d = document.createElement('div'); d.className = 'cell'; t.appendChild(d); }
+}
+function renderTape(){
+  const cells = $('tape').children, off = 32 - tapeData.length;
+  for (let i = 0; i < 32; i++){
+    const d = tapeData[i - off];
+    cells[i].className = 'cell' + (d ? (d.d ? ' d' : ' p') + (d.one ? ' one' : '') : '');
+  }
+}
+function renderStats(){
+  $('stPlayed').textContent = stats.played;
+  $('stDropped').textContent = stats.dropped;
+  const n = stats.played + stats.dropped;
+  $('stRate').textContent = n ? Math.round(stats.dropped / n * 100) + '%' : '–';
+}
+
+const ACC_LABEL = {2:'accent', 1:'normal', 0:'muted'};
+function buildPips(){
+  const el = $('pips'); el.innerHTML = ''; el.style.setProperty('--n', S.beats);
+  S.accents.forEach((a, i) => {
+    const b = document.createElement('button');
+    b.className = 'pip acc-' + a;
+    b.innerHTML = '<span class="mk">' + (a === 2 ? '&gt;' : a === 0 ? '×' : '') + '</span><span class="num">' + (i + 1) + '</span>';
+    b.setAttribute('aria-label', 'Beat ' + (i + 1) + ': ' + ACC_LABEL[a]);
+    b.addEventListener('click', () => { S.accents[i] = a === 1 ? 2 : a === 2 ? 0 : 1; save(); buildPips(); });
+    el.appendChild(b);
+  });
+}
+function setBeats(n){
+  n = clamp(n, 1, 12);
+  S.accents = Array.from({length:n}, (_, i) => S.accents[i] ?? (i === 0 ? 2 : 1));
+  S.beats = n;
+  $('beatsVal').textContent = n;
+  buildPips(); save();
+}
+
+function dropHint(){
+  const unit = S.unit === 'bar' ? 'bars' : 'beats';
+  let t;
+  if (S.chance === 0) t = 'Every beat plays.';
+  else if (S.chance >= 50) t = 'About ' + S.chance + '% of ' + unit + ' go silent.';
+  else t = 'About 1 in ' + Math.round(100 / S.chance) + ' ' + unit + ' go silent.';
+  if (S.keepOne && S.chance > 0) t += ' Beat 1 always plays.';
+  $('dropHint').textContent = t;
+  $('chanceVal').textContent = S.chance;
+}
+function syncDrop(){ $('dropFields').disabled = !S.dropOn; dropHint(); }
+
+function bindRadios(name, key, num){
+  document.querySelectorAll('input[name="' + name + '"]').forEach(r => {
+    r.checked = String(S[key]) === r.value;
+    r.addEventListener('change', () => {
+      if (!r.checked) return;
+      const old = S[key];
+      S[key] = num ? Number(r.value) : r.value;
+      if (key === 'subdiv' && playing) sub = Math.floor(sub / old) * S[key];
+      save(); dropHint();
+    });
+  });
+}
+
+/* Tap tempo */
+let taps = [];
+function tap(){
+  const now = performance.now();
+  if (taps.length && now - taps[taps.length - 1] > 2000) taps = [];
+  taps.push(now);
+  if (taps.length > 5) taps.shift();
+  if (taps.length >= 2){
+    const avg = (taps[taps.length - 1] - taps[0]) / (taps.length - 1);
+    setBpm(60000 / avg);
+  }
+  const b = $('tap'); b.classList.add('flash'); setTimeout(() => b.classList.remove('flash'), 90);
+}
+
+/* Init */
+setBpm(S.bpm);
+if (!Array.isArray(S.accents)) S.accents = [];
+setBeats(S.beats);
+buildTape(); renderTape();
+
+$('bpm').addEventListener('input', e => setBpm(+e.target.value));
+$('minus').addEventListener('click', () => setBpm(S.bpm - 1));
+$('plus').addEventListener('click', () => setBpm(S.bpm + 1));
+$('play').addEventListener('click', toggle);
+$('tap').addEventListener('click', tap);
+$('beatsMinus').addEventListener('click', () => setBeats(S.beats - 1));
+$('beatsPlus').addEventListener('click', () => setBeats(S.beats + 1));
+
+$('dropOn').checked = S.dropOn;
+$('dropOn').addEventListener('change', e => { S.dropOn = e.target.checked; save(); syncDrop(); });
+$('chance').value = S.chance;
+$('chance').addEventListener('input', e => { S.chance = +e.target.value; save(); dropHint(); });
+$('keepOne').checked = S.keepOne;
+$('keepOne').addEventListener('change', e => { S.keepOne = e.target.checked; save(); dropHint(); });
+$('showDrops').checked = S.showDrops;
+$('showDrops').addEventListener('change', e => { S.showDrops = e.target.checked; save(); });
+$('vol').value = S.vol;
+$('vol').addEventListener('input', e => { S.vol = +e.target.value; if (master) master.gain.value = Math.pow(S.vol/100, 1.6); save(); });
+
+bindRadios('unit', 'unit', false);
+bindRadios('lead', 'leadIn', true);
+bindRadios('subdiv', 'subdiv', true);
+bindRadios('sound', 'sound', false);
+syncDrop();
+
+document.addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const t = e.target;
+  if (t && t.type === 'range' && e.key.startsWith('Arrow')) return;
+  if (t && t.type === 'radio' && e.key.startsWith('Arrow')) return;
+  if (e.key === ' ') { e.preventDefault(); if (!e.repeat) toggle(); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); setBpm(S.bpm + 1); }
+  else if (e.key === 'ArrowLeft')  { e.preventDefault(); setBpm(S.bpm - 1); }
+  else if (e.key === 'ArrowUp')    { e.preventDefault(); setBpm(S.bpm + 5); }
+  else if (e.key === 'ArrowDown')  { e.preventDefault(); setBpm(S.bpm - 5); }
+  else if (e.key === 't' || e.key === 'T') tap();
+});
+document.addEventListener('keyup', e => { if (e.key === ' ') e.preventDefault(); });
+document.addEventListener('visibilitychange', () => { if (playing && document.visibilityState === 'visible') lockScreen(); });
+
+requestAnimationFrame(frame);
+})();
+</script>
+
+</body>
+</html>
