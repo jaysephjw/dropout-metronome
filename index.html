@@ -36,7 +36,6 @@ body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15p
 .top{display:flex;align-items:baseline;justify-content:space-between;gap:8px 20px;flex-wrap:wrap}
 .mark{font-family:var(--display);font-weight:800;font-size:34px;line-height:1;letter-spacing:.01em;text-transform:uppercase;display:flex;align-items:baseline;gap:10px}
 .mark span{font-family:var(--mono);font-weight:500;font-size:12px;letter-spacing:.14em;color:var(--muted)}
-.tag{margin:0;color:var(--muted);max-width:46ch}
 
 .grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:20px;align-items:start}
 @media (max-width:840px){.grid{grid-template-columns:minmax(0,1fr)}}
@@ -152,7 +151,6 @@ kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-b
 <div class="app">
   <header class="top">
     <div class="mark">Dropout<span>METRONOME</span></div>
-    <p class="tag">A metronome that goes silent at random.</p>
   </header>
 
   <main class="grid">
