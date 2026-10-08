@@ -29,6 +29,8 @@
   color-scheme:dark;
 }
 *{box-sizing:border-box}
+html,body{touch-action:manipulation}
+button,.seg label,.switch,input[type=range]{touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
 body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5}
 .app{max-width:1060px;margin:0 auto;padding-inline:20px;padding-block:20px 40px;display:grid;gap:20px}
 @media (max-width:480px){.app{padding-inline:16px}}
@@ -515,7 +517,8 @@ $('bpm').addEventListener('input', e => setBpm(+e.target.value));
 $('minus').addEventListener('click', () => setBpm(S.bpm - 1));
 $('plus').addEventListener('click', () => setBpm(S.bpm + 1));
 $('play').addEventListener('click', toggle);
-$('tap').addEventListener('click', tap);
+$('tap').addEventListener('pointerdown', e => { e.preventDefault(); tap(); });
+$('tap').addEventListener('click', e => { if (e.detail === 0) tap(); });
 $('beatsMinus').addEventListener('click', () => setBeats(S.beats - 1));
 $('beatsPlus').addEventListener('click', () => setBeats(S.beats + 1));
 
